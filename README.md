@@ -181,9 +181,9 @@ MIT License - See LICENSE file for details
 ## Author
 
 Your Name
-- GitHub: [@yourusername](https://github.com/yourusername)
-- LinkedIn: [Your Profile](https://linkedin.com/in/yourprofile)
-- Email: your-email@example.com
+- GitHub: [@ayo-d09](https://github.com/ayo-d09)
+
+- Email: ddraven009@gmail.com
 
 ## Acknowledgments
 
