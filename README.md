@@ -59,7 +59,7 @@ After deployment, Terraform outputs the CloudWatch Dashboard URL.
 ## Project Structure
 ```
 aws-monitoring-automation/
-├── main.tf                 # Provider and EC2 instance
+├── main.tf                # Provider and EC2 instance
 ├── alarm.tf               # CloudWatch alarms (warning level)
 ├── auto_healing.tf        # Lambda and critical alarms
 ├── dashboard.tf           # CloudWatch dashboard
@@ -67,7 +67,7 @@ aws-monitoring-automation/
 ├── terraform.tfvars       # Variable values
 ├── lambda/
 │   └── auto_remediation.py  # Auto-healing Lambda function
-├── ARCHITECTURE.md        # System architecture
+├── ARCHITECTURE.md       # System architecture
 └── README.md             # This file
 ```
 
