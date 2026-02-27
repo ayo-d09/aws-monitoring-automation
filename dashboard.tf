@@ -12,7 +12,7 @@ resource "aws_cloudwatch_dashboard" "monitoring_dashboard" {
         properties = {
           metrics = [
             ["AWS/EC2", "CPUUtilization", { stat = "Average", label = "CPU Average" }],
-            ["...", { stat = "Maximum", label = "CPU Max" }]
+            ["AWS/EC2", "CPUUtilization", { stat = "Maximum", label = "CPU Max" }]
           ]
           view    = "timeSeries"
           stacked = false
@@ -35,7 +35,7 @@ resource "aws_cloudwatch_dashboard" "monitoring_dashboard" {
         height = 6
         properties = {
           metrics = [
-            ["CWAgent", "MemoryUsedPercent", { stat = "Average" }]
+            ["CWAgent", "MemoryUsedPercent",  "path", "/", { stat = "Average" }]
           ]
           view    = "timeSeries"
           stacked = false
@@ -58,7 +58,7 @@ resource "aws_cloudwatch_dashboard" "monitoring_dashboard" {
         height = 6
         properties = {
           metrics = [
-            ["CWAgent", "DiskUsedPercent", { stat = "Average" }]
+            ["CWAgent", "DiskUsedPercent", "path", "/", { stat = "Average" }]
           ]
           view    = "timeSeries"
           stacked = false
