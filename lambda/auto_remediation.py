@@ -13,7 +13,7 @@ ec2 = boto3.client('ec2')
 sns = boto3.client('sns')
 ssm = boto3.client('ssm')
 
-# FIX 1: Guard against invalid env var crashing the Lambda at cold start
+
 try:
     COOLDOWN_MINUTES = int(os.environ.get('COOLDOWN_MINUTES', 15))
 except ValueError:
@@ -58,9 +58,7 @@ def set_last_reboot_time(instance_id: str) -> None:
 
 
 def is_in_cooldown(instance_id: str) -> bool:
-    # NOTE: This check and set_last_reboot_time are not atomic.
-    # Concurrent Lambda invocations can both pass this check for the same instance.
-    # Mitigation: set Lambda reserved concurrency to 1, or use DynamoDB conditional writes.
+   
     last_reboot = get_last_reboot_time(instance_id)
     if last_reboot is None:
         return False
@@ -116,7 +114,7 @@ def send_notification(instance_id: str, tags: dict, alarm_name: str,
         return
 
     status = "Rebooted" if success else "Reboot FAILED"
-    # FIX 3: Enforce SNS 100-character subject limit to prevent ClientError
+  
     subject = f"[Auto-Heal] {instance_id} {status} – {alarm_name}"[:100]
     body = (
         f"Auto-healing action {'succeeded' if success else 'FAILED'}\n\n"
@@ -152,7 +150,7 @@ def process_record(record: dict) -> dict:
 
     instance_id = None
     for dim in message.get('Trigger', {}).get('Dimensions', []):
-        # FIX 2: Avoid calling dim.get('name') twice; use a local variable
+
         raw_name = dim.get('name')
         name = raw_name if raw_name is not None else dim.get('Name')
         if name == 'InstanceId':
@@ -219,6 +217,6 @@ def lambda_handler(event, _):
             logger.exception("Error processing record: %s", str(e))
             results.append({'statusCode': 500, 'body': str(e)})
 
-    # FIX 4: Treat any non-200 result as a failure, not just 500s
+  
     overall_status = 200 if all(r['statusCode'] == 200 for r in results) else 500
     return {'statusCode': overall_status, 'body': json.dumps(results)}
