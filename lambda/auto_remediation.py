@@ -13,7 +13,13 @@ ec2 = boto3.client('ec2')
 sns = boto3.client('sns')
 ssm = boto3.client('ssm')
 
-COOLDOWN_MINUTES = int(os.environ.get('COOLDOWN_MINUTES', 15))
+# FIX 1: Guard against invalid env var crashing the Lambda at cold start
+try:
+    COOLDOWN_MINUTES = int(os.environ.get('COOLDOWN_MINUTES', 15))
+except ValueError:
+    logger.warning("Invalid COOLDOWN_MINUTES env var; defaulting to 15")
+    COOLDOWN_MINUTES = 15
+
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN')
 
 
@@ -52,6 +58,9 @@ def set_last_reboot_time(instance_id: str) -> None:
 
 
 def is_in_cooldown(instance_id: str) -> bool:
+    # NOTE: This check and set_last_reboot_time are not atomic.
+    # Concurrent Lambda invocations can both pass this check for the same instance.
+    # Mitigation: set Lambda reserved concurrency to 1, or use DynamoDB conditional writes.
     last_reboot = get_last_reboot_time(instance_id)
     if last_reboot is None:
         return False
@@ -107,7 +116,8 @@ def send_notification(instance_id: str, tags: dict, alarm_name: str,
         return
 
     status = "Rebooted" if success else "Reboot FAILED"
-    subject = f"[Auto-Heal] {instance_id} {status} – {alarm_name}"
+    # FIX 3: Enforce SNS 100-character subject limit to prevent ClientError
+    subject = f"[Auto-Heal] {instance_id} {status} – {alarm_name}"[:100]
     body = (
         f"Auto-healing action {'succeeded' if success else 'FAILED'}\n\n"
         f"• Instance:     {instance_id}\n"
@@ -142,10 +152,12 @@ def process_record(record: dict) -> dict:
 
     instance_id = None
     for dim in message.get('Trigger', {}).get('Dimensions', []):
-        # FIX: Use explicit None checks instead of 'or' to avoid skipping falsy values
-        name = dim.get('name') if dim.get('name') is not None else dim.get('Name')
+        # FIX 2: Avoid calling dim.get('name') twice; use a local variable
+        raw_name = dim.get('name')
+        name = raw_name if raw_name is not None else dim.get('Name')
         if name == 'InstanceId':
-            instance_id = dim.get('value') if dim.get('value') is not None else dim.get('Value')
+            raw_value = dim.get('value')
+            instance_id = raw_value if raw_value is not None else dim.get('Value')
             break
 
     if not instance_id:
@@ -203,9 +215,10 @@ def lambda_handler(event, _):
         try:
             result = process_record(record)
             results.append(result)
-        except Exception as e:  # FIX: broad catch to handle all unexpected errors at top level
+        except Exception as e:
             logger.exception("Error processing record: %s", str(e))
             results.append({'statusCode': 500, 'body': str(e)})
 
-    overall_status = 500 if any(r['statusCode'] == 500 for r in results) else 200
+    # FIX 4: Treat any non-200 result as a failure, not just 500s
+    overall_status = 200 if all(r['statusCode'] == 200 for r in results) else 500
     return {'statusCode': overall_status, 'body': json.dumps(results)}
