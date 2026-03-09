@@ -3,8 +3,6 @@ import json
 import os
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Optional
-from botocore.exceptions import ClientError  # type: ignore
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -15,7 +13,7 @@ ssm = boto3.client('ssm')
 
 
 try:
-    COOLDOWN_MINUTES = int(os.environ.get('COOLDOWN_MINUTES', 15))
+    COOLDOWN_MINUTES = int(os.environ.get('COOLDOWN_MINUTES', '15'))
 except ValueError:
     logger.warning("Invalid COOLDOWN_MINUTES env var; defaulting to 15")
     COOLDOWN_MINUTES = 15
@@ -23,26 +21,40 @@ except ValueError:
 SNS_TOPIC_ARN = os.environ.get('SNS_TOPIC_ARN')
 
 
-def get_last_reboot_time(instance_id: str) -> Optional[datetime]:
+def get_last_reboot_time(instance_id): """
+    Check when the instance was last rebooted by this Lambda, using SSM Parameter Store.
+    Returns none if it has never been rebooted or if there's an error reading the parameter.
+    """ 
     param_name = f"/auto-remediation/last-reboot/{instance_id}"
     try:
         response = ssm.get_parameter(Name=param_name)
         timestamp_str = response['Parameter']['Value']
-        parsed_time = datetime.fromisoformat(timestamp_str)
-        if parsed_time.tzinfo is None:
-            logger.warning(
-                "SSM reboot timestamp for %s had no timezone; assuming UTC", instance_id)
-            parsed_time = parsed_time.replace(tzinfo=timezone.utc)
-        return parsed_time
+        reboot_time = datetime.fromisoformat(timestamp_str)
+        if reboot_time.tzinfo is None:
+            reboot_time = reboot_time.replace(tzinfo=timezone.utc)
+            
+        return reboot_time
     except ssm.exceptions.ParameterNotFound:
         return None
-    except ValueError as e:
-        logger.warning(
-            "Invalid timestamp format in SSM for %s: %s", instance_id, str(e))
+    except exception as e:
+        logger.warning("Could not read SSM parameter for %s: %s", instance_id, str(e))
         return None
-    except ClientError as e:
-        logger.warning("Could not read SSM parameter for %s: %s",
-                       instance_id, str(e))
+def set_last_reboot_time(instance_id): """
+    Store the current time as the last reboot time for the instance in SSM Parameter Store.
+    """
+    param_name = f"/auto-remediation/last-reboot/{instance_id}"
+    
+    try:
+        current_time = datetime.now(timezone.utc).isoformat()
+        ssm.put_parameter(
+            Name=param_name,
+            Value=current_time,
+            Type='String',
+            Overwrite=True
+        )
+    logger.info(f"Updated last reboot time for {instance_id}")
+    except Exception as e:
+        logger.warning("Could not write SSM parameter for %s: %s", instance_id, str(e))
         return None
 
 
@@ -55,12 +67,13 @@ def set_last_reboot_time(instance_id: str) -> None:
             Type='String',
             Overwrite=True
         )
-    except ClientError as e:
-        logger.warning("Could not write SSM parameter for %s: %s",
-                       instance_id, str(e))
+    except Exception as e:
+        logger.warning("Could not save reboot timestamp for %s: %s", instance_id, str(e))
 
 
-def is_in_cooldown(instance_id: str) -> bool:
+
+def is_in_cooldown(instance_id)):
+    """Check
 
     last_reboot = get_last_reboot_time(instance_id)
     if last_reboot is None:
